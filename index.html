@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Payment Link Generator</title>
+        <link
+            rel="stylesheet"
+            href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+        />
+        <style>
+            .hidden {
+                display: none;
+            }
+        </style>
+    </head>
+    <body class="container py-5">
+        <h1>Create Payment Link with Voice Command</h1>
+        <button id="voiceBtn" class="btn btn-primary mb-4">
+            Click and Speak
+        </button>
+
+        <div id="outputContainer" class="hidden">
+            <p id="outputText"></p>
+        </div>
+
+        <div id="paymentLinkContainer" class="mt-4 hidden">
+            <h3>Your Payment Link:</h3>
+            <a id="paymentLink" href="#" target="_blank"></a>
+        </div>
+
+        <div id="balanceContainer" class="mt-4 hidden">
+            <h3>Your Balance:</h3>
+            <p id="balanceAmount"></p>
+        </div>
+
+        <div id="ticketContainer" class="mt-4 hidden">
+            <h3>Your Ticket Status:</h3>
+            <ul id="ticketList"></ul>
+        </div>
+
+        <script>
+            const voiceBtn = document.getElementById("voiceBtn");
+            const outputText = document.getElementById("outputText");
+            const outputContainer = document.getElementById("outputContainer");
+            const paymentLinkContainer = document.getElementById(
+                "paymentLinkContainer",
+            );
+            const paymentLink = document.getElementById("paymentLink");
+            const balanceContainer =
+                document.getElementById("balanceContainer");
+            const balanceAmount = document.getElementById("balanceAmount");
+            const ticketContainer = document.getElementById("ticketContainer");
+            const ticketList = document.getElementById("ticketList");
+
+            let recognition;
+            let currentStep = 0;
+            let phoneNumber = "";
+            let amount = "";
+            let currency = "";
+
+            if ("webkitSpeechRecognition" in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = "en-US";
+
+                recognition.onresult = (event) => {
+                    const transcript =
+                        event.results[0][0].transcript.toLowerCase();
+                    handleVoiceInput(transcript);
+                };
+
+                recognition.onerror = (event) => {
+                    console.error("Speech recognition error", event.error);
+                    outputText.textContent =
+                        "Speech recognition error. Please try again.";
+                    currentStep = 0; // Reset on error
+                };
+
+                recognition.onend = () => {
+                    if (currentStep > 0 && currentStep < 4) {
+                        setTimeout(() => recognition.start(), 1000);
+                    }
+                };
+            }
+
+            function handleVoiceInput(transcript) {
+                outputContainer.classList.remove("hidden");
+
+                if (
+                    currentStep === 0 &&
+                    transcript.includes("create a payment link")
+                ) {
+                    currentStep++;
+                    outputText.textContent = "Please say the phone number.";
+                    speak("Please say the phone number.");
+                } else if (currentStep === 1) {
+                    phoneNumber = transcript.replace(/\D/g, "");
+                    if (phoneNumber.length < 10) {
+                        outputText.textContent =
+                            "Invalid phone number. Please say it again.";
+                        recognition.start(); // Restart for correct input
+                        return;
+                    }
+                    outputText.textContent =
+                        "You said: " +
+                        phoneNumber +
+                        ". Now, please say the amount.";
+                    currentStep++;
+                    speak("Now, please say the amount.");
+                    setTimeout(() => recognition.start(), 1000);
+                } else if (currentStep === 2) {
+                    amount = transcript.replace(/[^\d.]/g, "");
+                    if (isNaN(amount) || amount === "") {
+                        outputText.textContent =
+                            "Invalid amount. Please say the amount again.";
+                        recognition.start(); // Restart for correct input
+                        return;
+                    }
+                    outputText.textContent =
+                        "You said: " +
+                        amount +
+                        ". Now, please say the currency (like INR, USD).";
+                    currentStep++;
+                    speak("Now, please say the currency (like INR, USD).");
+                    setTimeout(() => recognition.start(), 1000);
+                } else if (currentStep === 3) {
+                    currency = transcript.toUpperCase();
+                    if (!currency || currency.length !== 3) {
+                        outputText.textContent =
+                            "Invalid currency. Please say it again.";
+                        recognition.start(); // Restart for correct input
+                        return;
+                    }
+                    outputText.textContent =
+                        "You said: " +
+                        currency +
+                        ". Generating the payment link...";
+                    currentStep = 0;
+                    speak("Generating the payment link...");
+                    generatePaymentLink();
+                } else if (transcript.includes("what is my current balance")) {
+                    getBalance();
+                } else if (
+                    transcript.includes("what is the status of my ticket")
+                ) {
+                    getTicketStatus();
+                } else {
+                    outputText.textContent =
+                        "Say 'create a payment link' to start.";
+                    speak("Say 'create a payment link' to start.");
+                }
+            }
+
+            function generatePaymentLink() {
+                const data = {
+                    customer: {
+                        name: "Customer",
+                        email: "customer@example.com",
+                        contact: phoneNumber,
+                    },
+                    amount: amount,
+                    currency: currency,
+                };
+
+                fetch("/create-payment-link", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(data),
+                })
+                    .then((response) => response.json())
+                    .then((result) => {
+                        if (result.status === "success") {
+                            paymentLink.textContent = result.payment_link;
+                            paymentLink.href = result.payment_link;
+                            paymentLinkContainer.classList.remove("hidden");
+                            outputText.textContent =
+                                "Payment link created successfully!";
+                            speak("Payment link created successfully!");
+                        } else {
+                            outputText.textContent =
+                                "Failed to create payment link.";
+                            speak("Failed to create payment link.");
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Error creating payment link:", error);
+                        outputText.textContent =
+                            "An error occurred while generating the payment link.";
+                        speak(
+                            "An error occurred while generating the payment link.",
+                        );
+                    });
+            }
+
+            function getBalance() {
+                fetch("/balance")
+                    .then((response) => response.json())
+                    .then((data) => {
+                        balanceAmount.textContent = data.balance;
+                        balanceContainer.classList.remove("hidden");
+                        outputText.textContent = `Your current balance is ${data.balance} rupees.`;
+                        speak(`Your balance is ${data.balance} rupees.`);
+                    })
+                    .catch((error) => {
+                        console.error("Error fetching balance:", error);
+                        outputText.textContent =
+                            "An error occurred while fetching your balance.";
+                        speak("An error occurred while fetching your balance.");
+                    });
+            }
+
+            function getTicketStatus() {
+                fetch("/ticket-status")
+                    .then((response) => response.json())
+                    .then((data) => {
+                        ticketList.innerHTML = "";
+                        const ticketLabels = [
+                            "Payment failure",
+                            "Refund status",
+                            "Settlement status",
+                        ];
+
+                        data.ticketIDs.forEach((ticketID, index) => {
+                            const li = document.createElement("li");
+                            li.textContent = `${ticketID} - ${ticketLabels[index]}`; // Add the corresponding label
+                            li.style.cursor = "pointer";
+                            li.onclick = () => checkTicketStatus(ticketID);
+                            ticketList.appendChild(li);
+                        });
+
+                        ticketContainer.classList.remove("hidden");
+                        outputText.textContent = "Here are your ticket IDs.";
+                        speak("Here are your ticket IDs.");
+                    })
+                    .catch((error) => {
+                        console.error("Error fetching ticket status:", error);
+                        outputText.textContent =
+                            "An error occurred while fetching your ticket status.";
+                        speak(
+                            "An error occurred while fetching your ticket status.",
+                        );
+                    });
+            }
+
+            function checkTicketStatus(ticketID) {
+                fetch(`/ticket/${ticketID}`)
+                    .then((response) => response.json())
+                    .then((data) => {
+                        outputText.textContent = `Status of ${data.id}: ${data.status}`;
+                        speak(`Status of ${data.id}: ${data.status}`);
+                    })
+                    .catch((error) => {
+                        console.error("Error fetching ticket status:", error);
+                        outputText.textContent =
+                            "An error occurred while fetching ticket status.";
+                        speak(
+                            "An error occurred while fetching ticket status.",
+                        );
+                    });
+            }
+
+            function speak(text) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = "en-US";
+                window.speechSynthesis.speak(utterance);
+            }
+
+            voiceBtn.addEventListener("click", () => {
+                if (recognition) {
+                    currentStep = 0;
+                    recognition.start();
+                }
+            });
+        </script>
+    </body>
+</html>
